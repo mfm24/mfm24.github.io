@@ -1,4 +1,4 @@
-LocoWordFinder
+[LocoWordFinder](https://mfm24.github.io/LocoWordFinder.html)
 
 This is a local anagram solver. It uses Python to create a javascript list, which is then processed in realtime in LocoWordFinder.html to provide anagrams in realtime as the user types.
 
