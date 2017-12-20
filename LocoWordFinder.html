@@ -1,0 +1,265 @@
+<html>
+<head>
+	<title>LocoWordFinder</title>
+<style>
+h2 input, h2
+{
+	font-size: 24px;
+}
+table, td, th
+{
+	border: 1px solid grey;
+	border-collapse: collapse;
+	margin-right: 50px
+}
+
+td
+{
+	vertical-align: top;
+}
+th
+{
+	background: lightgrey;
+}
+table table, table table td
+{
+	border:0;
+	width:100%;
+}
+</style>
+</head>
+<body>
+<script>
+var loaded_dict = false
+var storage_key = "word_dictionary"
+var js_path = "https://dl.dropbox.com/u/694901/blog/LocoWordFinder/anagram_keyless.js"
+
+if(typeof(Storage)!=="undefined")
+{
+	// look to see if we have v in local storage
+	v=localStorage.getItem(storage_key)
+	if (v!=null)
+	{
+		v = JSON.parse(v)
+		loaded_dict = true
+	}
+}
+
+if (! loaded_dict)
+{
+	//we load the anagram keyless dynamically:
+	var head = document.getElementsByTagName('head')[0];
+	var script = document.createElement('script');
+	script.type = 'text/javascript';
+	script.src = js_path;
+	script.onload= function() {
+		// hopefully this loads it
+		v={}
+		//we convert the array of string arrays into a dictionary of string arrays
+		//with the key being a sorted list of chars in each string
+		// so using an array as a key doesn't seem any slower/faster.
+		// so non-keyless (first version) loaded a file like:
+		// v={...,'ails':['sail', 'ails', 'sial'],...}
+		//whereas the new one loads
+		// vk=[...,['sail', 'ails', 'sial'],...]
+		//and converts into 
+		// v = {..., ['a','i','l','s']:['sail', 'ails', 'sial'],...}
+		//which makes sense, as we use character lists internally so we can insert and remove
+		//elements. So the conversion from vk to v takes ~4s, and once done we get the same result
+		//without having to switch between char arrays and strings. Doesn't seem to affect performance though
+		//(I thought it might have been quicker...)
+		for (var k in vk) { v[vk[k][0].split("").sort()] = vk[k]}
+		if(typeof(Storage)!=="undefined")
+		{
+			// look to see if we have v in local storage
+			localStorage.setItem(storage_key, JSON.stringify(v))
+		}
+	}
+	head.appendChild(script);
+}
+
+function recuranagram(s)
+{
+	//s is an array of chars, we have to convert to string if needed
+	//console.log(s)
+	if(s.length<2) return 0;
+	if(searched[s])
+		return;
+
+
+	searched[s]=true;
+
+	// var s_string = chars_to_str(s)
+	// lookup here could be slow, we'll do once
+	found_words=v[s]
+	if(found_words)
+	{
+		for(var i=0;  i<found_words.length; i++)
+		{
+			found[found_words[i]]=true;
+			//console.log("found"+v[s_string][i])
+		}
+	}
+
+	var lastchar="";
+	for(var i=0; i<s.length; i++)
+	{
+		if(lastchar==s[i])
+			continue; //searching for aabob and removing first or second a is equivalent
+		lastchar=s[i];
+		//var bs=str_to_chars(s)
+		//console.log(bs.length)
+		var locals = s.slice(0); //returns a copy
+		locals.splice(i,1)
+		//console.log(bs.length)
+
+		recuranagram(locals)
+	}
+}
+
+function get_strings(word)
+{
+
+	//we return a list of the string sto check, with no blanks, it's simply the sorted letters in word
+	ret=[];
+	var bytes=word.split("")
+
+	var blanks=[]; //index of our blank squares
+	for(var i=0; i<bytes.length; i++)
+	{
+		if(bytes[i]=='?')
+			blanks.push(i);
+	}
+
+	if(blanks.length>0)
+	{
+		for(var i=0; i<Math.pow(26, blanks.length); i++)
+		{
+			var local_bytes=bytes.slice(0);
+			var modi=i;
+			for(var bi=0; bi<blanks.length; bi++)
+			{
+				local_bytes[blanks[bi]] = String.fromCharCode(97+modi%26); //97 =='a'
+				modi /= 26;
+			}
+			local_bytes.sort();
+			ret.push(local_bytes)
+		}
+	}
+	else
+	{
+		bytes.sort()
+		ret.push(bytes);
+	}
+	return ret;
+}
+
+function tag_blanks_and_score(s, orig, tagstart, tagend)
+{
+	//we want to find the letters in s that aren't in orig and score
+	//returns a [formatted,score] list
+	var reduceds=s;
+	var score=0
+	//we'll do naive score first
+	for(var i=0; i<s.length; i++)
+		score+=scores[reduceds[i]]
+	for(var i=0;i<orig.length;i++)
+	{
+		if(orig[i]!='?')
+			reduceds=reduceds.replace(orig[i], '')
+	}
+	//s is now just the letters that are blanks
+	for(var i=0; i<reduceds.length; i++)
+	{
+		//we need to first replace by something that won't match twice
+		//e if we have ee for ??, just replacing 'e' with <T>e</T>
+		//won't stop it matching e the second go through. We'll use #n
+		score-=scores[reduceds[i]]
+		s=s.replace(reduceds[i], "#"+i)
+	}
+
+	for(var i=0; i<reduceds.length; i++)
+	{
+		//second replacement, #n should be unique in the string now
+		s=s.replace("#"+i, tagstart+reduceds[i]+tagend )
+	}
+	return [s, score];
+}
+found={};
+searched={};
+lastrequest="";
+scores={'a': 1, 'c': 4, 'b': 4, 'e': 1, 'd': 2, 'g': 3, 'f': 4, 'i': 1, 'h': 3, 'k': 5, 'j': 10, 'm': 4, 'l': 2, 'o': 1, 'n': 2, 'q': 10, 'p': 4, 's': 1, 'r': 1, 'u': 2, 't': 1, 'w': 4, 'v': 5, 'y': 3, 'x': 8, 'z': 10}
+function myscript()
+{
+
+	document.getElementById("outp").innerHTML="";
+	var request = document.getElementById("fname").value;
+	var match = document.getElementById("re_match").value;
+	var badmatch=false;
+	if(match!="")
+		try { match=RegExp(match); }
+		catch(err) { match=null; badmatch=true; }
+	else
+		match=null;
+
+	if(request.indexOf(lastrequest)==-1 || lastrequest=="")
+	{
+		found={}
+		searched={}
+	}
+	var strings = get_strings(request);
+	for(var i=0; i<strings.length; i++)
+	{
+		recuranagram(strings[i])
+	}
+	
+	
+	//console.log(bytes)
+	words_by_length={}
+	var total=0;
+	for (var w in found)
+	{
+		if(match)
+			if(!w.match(match))
+				continue;
+		total++;
+		if(!words_by_length[w.length])
+			words_by_length[w.length]=[]
+		words_by_length[w.length].push(w)
+	}
+	var outhtml=total+" Results for <b>"+request+"</b> ("+request.length+" letters)"
+	if(match) outhtml+=" matching <b>"+match+"</b>";
+	if(badmatch) outhtml+=" ignoring bad regex:<b>"+document.getElementById("re_match").value+"<b>"
+	outhtml+=":<table><tr>"
+	for (var len in words_by_length)
+		outhtml+="<th>"+len+"-letters"+"</th>"
+	outhtml+="</tr><tr>";
+	for (var len in words_by_length)
+	{
+		outhtml+="<td><table>"
+		//we convert words to formatted word,score list
+		var mapped_scored=words_by_length[len].map(function(a) { return tag_blanks_and_score(a, request, "<I>", "</I>")});
+
+		mapped_scored.sort(function(a,b) { return b[1]-a[1];});
+		for(var i=0; i<mapped_scored.length; i++)
+		{
+			outhtml+="<tr><td>"
+			outhtml+=mapped_scored[i][0]+"</td><td>"+mapped_scored[i][1]+"</td></tr>"
+
+		}
+		outhtml+="</table></td>"
+	}
+	outhtml+="</tr></table>"
+	
+	document.getElementById("outp").innerHTML =outhtml
+
+}
+
+</script>
+
+
+<h2>word:<input type="text" id="fname" onkeyup = "myscript()" /></h2>
+<p>match:<input type="text" id="re_match" onkeyup = "myscript()" /> (<a href='http://www.codeproject.com/Articles/939/An-Introduction-to-Regular-Expressions'>regex</a>)</p>
+<span id="outp"></span>
+</body>
+</html>
