@@ -193,7 +193,7 @@ function myscript()
 {
 
 	document.getElementById("outp").innerHTML="";
-	var request = document.getElementById("fname").value;
+	var request = document.getElementById("fname").value.toLowerCase();
 	var match = document.getElementById("re_match").value;
 	var badmatch=false;
 	if(match!="")
